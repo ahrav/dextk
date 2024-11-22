@@ -587,7 +587,7 @@ func (r *Reader) ReadCodeAndParse(off uint32) (CodeNode, error) {
 		defer pool32kop.Put(opBufPtr)
 		opsBuffer = (*opBufPtr.(*[]OpNode))[:idPos]
 	case idPos <= 64*1024:
-		opBufPtr = pool512kop.Get()
+		opBufPtr = pool64kop.Get()
 		defer pool64kop.Put(opBufPtr)
 		opsBuffer = (*opBufPtr.(*[]OpNode))[:idPos]
 	default:
