@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"unicode/utf16"
 )
 
@@ -126,6 +127,27 @@ func (s String) String() string {
 	return s.Parsed
 }
 
+var (
+	pool1k = sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, 1024)
+			return &buf
+		},
+	}
+	pool32k = sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, 32*1024)
+			return &buf
+		},
+	}
+	pool512k = sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, 512*1024)
+			return &buf
+		},
+	}
+)
+
 func (r *Reader) ReadString(id uint32) (String, error) {
 	if id >= r.StringIDCount {
 		return String{}, ErrInvalidStringID
@@ -147,8 +169,30 @@ func (r *Reader) ReadString(id uint32) (String, error) {
 		return String{}, nil
 	}
 
-	// mutf-8 encodes upto 3 bytes per char
-	data := make([]byte, strSize*3+1)
+	// Get appropriately sized buffer from pool
+	requiredSize := strSize*3 + 1
+
+	var (
+		data   []byte
+		bufPtr any
+	)
+
+	switch {
+	case requiredSize <= 1024:
+		bufPtr = pool1k.Get()
+		defer pool1k.Put(bufPtr)
+		data = (*bufPtr.(*[]byte))[:requiredSize]
+	case requiredSize <= 32*1024:
+		bufPtr = pool32k.Get()
+		defer pool32k.Put(bufPtr)
+		data = (*bufPtr.(*[]byte))[:requiredSize]
+	case requiredSize <= 512*1024:
+		bufPtr = pool512k.Get()
+		defer pool512k.Put(bufPtr)
+		data = (*bufPtr.(*[]byte))[:requiredSize]
+	default:
+		data = make([]byte, requiredSize)
+	}
 
 	rsize, err := r.file.ReadAt(data, int64(strPos+n))
 	if err != nil && err != io.EOF {

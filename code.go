@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"unsafe"
 )
 
 var ErrBadOp = errors.New("malformed op")
@@ -476,7 +477,33 @@ func (r *Reader) ReadCodeAndParse(off uint32) (CodeNode, error) {
 	or := NewOpReader(c.Insns)
 
 	// Perform an initial pass to discover instruction positions
-	idMap := make([]uint, len(c.Insns))
+	requiredSize := len(c.Insns)
+
+	var (
+		idMap  []uint
+		bufPtr any
+	)
+
+	switch {
+	case requiredSize <= 1024/8:
+		bufPtr = pool1k.Get()
+		defer pool1k.Put(bufPtr)
+		data := (*bufPtr.(*[]byte))[:requiredSize*8]
+		idMap = *(*[]uint)(unsafe.Pointer(&data))
+	case requiredSize <= 32*1024/8:
+		bufPtr = pool32k.Get()
+		defer pool32k.Put(bufPtr)
+		data := (*bufPtr.(*[]byte))[:requiredSize*8]
+		idMap = *(*[]uint)(unsafe.Pointer(&data))
+	case requiredSize <= 512*1024/8:
+		bufPtr = pool512k.Get()
+		defer pool512k.Put(bufPtr)
+		data := (*bufPtr.(*[]byte))[:requiredSize*8]
+		idMap = *(*[]uint)(unsafe.Pointer(&data))
+	default:
+		idMap = make([]uint, requiredSize)
+	}
+
 	idPos := uint(0)
 
 	for or.HasMore() {
