@@ -484,6 +484,27 @@ var (
 	}
 )
 
+var (
+	pool1kop = sync.Pool{
+		New: func() interface{} {
+			buf := make([]OpNode, 1024)
+			return &buf
+		},
+	}
+	pool32kop = sync.Pool{
+		New: func() interface{} {
+			buf := make([]OpNode, 32*1024)
+			return &buf
+		},
+	}
+	pool64kop = sync.Pool{
+		New: func() interface{} {
+			buf := make([]OpNode, 64*1024)
+			return &buf
+		},
+	}
+)
+
 func (r *Reader) ReadCodeAndParse(off uint32) (CodeNode, error) {
 	var res CodeNode
 
@@ -550,7 +571,31 @@ func (r *Reader) ReadCodeAndParse(off uint32) (CodeNode, error) {
 	}
 
 	// Second pass to parse instructions
-	res.Ops = make([]OpNode, idPos)
+
+	var (
+		opsBuffer []OpNode
+		opBufPtr  any
+	)
+
+	switch {
+	case idPos <= 1024:
+		opBufPtr = pool1kop.Get()
+		defer pool1kop.Put(opBufPtr)
+		opsBuffer = (*opBufPtr.(*[]OpNode))[:idPos]
+	case idPos <= 32*1024:
+		opBufPtr = pool32kop.Get()
+		defer pool32kop.Put(opBufPtr)
+		opsBuffer = (*opBufPtr.(*[]OpNode))[:idPos]
+	case idPos <= 64*1024:
+		opBufPtr = pool512kop.Get()
+		defer pool64kop.Put(opBufPtr)
+		opsBuffer = (*opBufPtr.(*[]OpNode))[:idPos]
+	default:
+		opsBuffer = make([]OpNode, idPos)
+	}
+	res.Ops = opsBuffer
+
+	// res.Ops = make([]OpNode, idPos)
 	idPos = 0
 
 	or.Seek(0)
