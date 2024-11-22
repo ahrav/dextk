@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"unsafe"
+	"sync"
 )
 
 var ErrBadOp = errors.New("malformed op")
@@ -462,6 +462,27 @@ type CodeNode struct {
 	// TODO: DebugInfoOff, Tries, Handlers
 }
 
+var (
+	pool1kuint = sync.Pool{
+		New: func() interface{} {
+			buf := make([]uint, 1024)
+			return &buf
+		},
+	}
+	pool32kuint = sync.Pool{
+		New: func() interface{} {
+			buf := make([]uint, 32*1024)
+			return &buf
+		},
+	}
+	pool512kuint = sync.Pool{
+		New: func() interface{} {
+			buf := make([]uint, 512*1024)
+			return &buf
+		},
+	}
+)
+
 func (r *Reader) ReadCodeAndParse(off uint32) (CodeNode, error) {
 	var res CodeNode
 
@@ -485,21 +506,18 @@ func (r *Reader) ReadCodeAndParse(off uint32) (CodeNode, error) {
 	)
 
 	switch {
-	case requiredSize <= 1024/8:
-		bufPtr = pool1k.Get()
-		defer pool1k.Put(bufPtr)
-		data := (*bufPtr.(*[]byte))[:requiredSize*8]
-		idMap = *(*[]uint)(unsafe.Pointer(&data))
-	case requiredSize <= 32*1024/8:
-		bufPtr = pool32k.Get()
-		defer pool32k.Put(bufPtr)
-		data := (*bufPtr.(*[]byte))[:requiredSize*8]
-		idMap = *(*[]uint)(unsafe.Pointer(&data))
-	case requiredSize <= 512*1024/8:
-		bufPtr = pool512k.Get()
-		defer pool512k.Put(bufPtr)
-		data := (*bufPtr.(*[]byte))[:requiredSize*8]
-		idMap = *(*[]uint)(unsafe.Pointer(&data))
+	case requiredSize <= 1024:
+		bufPtr = pool1kuint.Get()
+		defer pool1kuint.Put(bufPtr)
+		idMap = (*bufPtr.(*[]uint))[:requiredSize]
+	case requiredSize <= 32*1024:
+		bufPtr = pool32kuint.Get()
+		defer pool32kuint.Put(bufPtr)
+		idMap = (*bufPtr.(*[]uint))[:requiredSize]
+	case requiredSize <= 512*1024:
+		bufPtr = pool512kuint.Get()
+		defer pool512kuint.Put(bufPtr)
+		idMap = (*bufPtr.(*[]uint))[:requiredSize]
 	default:
 		idMap = make([]uint, requiredSize)
 	}
