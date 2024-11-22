@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
 	"sync"
 )
 
@@ -499,6 +500,19 @@ func (r *Reader) ReadCodeAndParse(off uint32) (CodeNode, error) {
 
 	// Perform an initial pass to discover instruction positions
 	requiredSize := len(c.Insns)
+
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	defer func() {
+		var after runtime.MemStats
+		runtime.ReadMemStats(&after)
+		fmt.Printf("Allocations in ReadCodeAndParse: %d bytes\n",
+			after.TotalAlloc-before.TotalAlloc)
+	}()
+
+	// Track the size of idMap allocations
+	fmt.Printf("Required size for idMap: %d\n", requiredSize)
 
 	var (
 		idMap  []uint
